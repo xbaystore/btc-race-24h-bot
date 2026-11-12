@@ -4,7 +4,9 @@
 Protocol: the harness sends one hello line, then one batch line per
 minute carrying the bar that just closed, the fills of our previous
 orders and our account. We answer every batch with exactly one reply
-line: {"seq": <echoed>, "orders": [...]}. An order decided on a batch
+line: {"type": "reply", "seq": <echoed>, "orders": [...]}, where a buy
+order's notional_quote_units and a sell order's qty are decimal
+strings, as the protocol schema requires. An order decided on a batch
 fills at the next bar's open, paying a 4 bps fee, 2 bps of slippage and
 the pool's price impact, so a full round trip costs roughly 26 bps and
 every trade below is sized and targeted to clear that bar.
@@ -80,7 +82,7 @@ def on_batch(batch):
         if pnl >= TAKE_PROFIT or pnl <= -STOP or bar_no - in_pos_since >= MAX_HOLD:
             in_pos_since = -1
             cooldown_until = bar_no + COOLDOWN
-            return [{"side": "sell", "symbol": SYMBOL, "qty": qty,
+            return [{"side": "sell", "symbol": SYMBOL, "qty": str(qty),
                      "max_slippage_bps": MAX_SLIP_BPS,
                      "client_id": f"s{bar_no}"}]
         return []
@@ -101,7 +103,7 @@ def on_batch(batch):
     if notional < 1_000_000:  # the 1 USDC minimum buy
         return []
     return [{"side": "buy", "symbol": SYMBOL,
-             "notional_quote_units": notional,
+             "notional_quote_units": str(notional),
              "max_slippage_bps": MAX_SLIP_BPS,
              "client_id": f"b{bar_no}"}]
 
@@ -117,7 +119,8 @@ def main():
         if msg.get("type") != "batch":
             continue
         orders = on_batch(msg)
-        sys.stdout.write(json.dumps({"seq": msg["seq"], "orders": orders}) + "\n")
+        reply = {"type": "reply", "seq": msg["seq"], "orders": orders}
+        sys.stdout.write(json.dumps(reply) + "\n")
         sys.stdout.flush()
 
 
